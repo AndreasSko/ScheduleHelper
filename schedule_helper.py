@@ -7,41 +7,49 @@ Copyright, 2018: Andreas Skorczyk <me@andreas-sk.de>
 from time import *
 from random import shuffle
 
-count = 0
-
 
 def main():
     global count
     start_time = time()
     candidates = ["A.Picone", "P.Skorczyk", "R.Stöhr", "R.Ritschel", "G.Teixera", "F.Camuto", "M.Stöhr"]
-    not_available = [[], ["M.Stöhr"], [], ["F.Camuto", "P.Skorczyk"], []]
+    candidates_cost = {'F.Camuto': 3, 'R.Ritschel': 2}
+    not_available = []
+    possible_solutions = []
 
     # Copy candidates list, so it can be changed
     new_candidates = candidates[:]
 
     # Find a solution. If there are not enough candidates and search fails, use more candidates
-    while True:
-        shuffle(new_candidates)
-        print(new_candidates)
+    while time() < start_time + 14000:
+        while True:
+            shuffle(new_candidates)
 
-        solution = find_solution(new_candidates, not_available, [], 0, 0, time() + 5)
+            solution = find_solution(new_candidates, not_available, [], 0, 0, time() + 600)
 
-        # If a solution is found, we are done. If not: Increase candidate count
-        if solution is not None:
-            break
+            # If a solution is found, we are done. If not: Increase candidate count
+            if solution is not None:
+                break
 
-        print("No solution found yet. Increasing candidates..")
-        print("Tried " + str(count))
+            print("No solution found yet. Increasing candidates..")
 
-        new_candidates = new_candidates[:] + candidates[:]
+            new_candidates = new_candidates[:] + candidates[:]
 
-    # Print out solution
-    print("Solution found in " + str(round(time() - start_time, 2)) + "s:")
-    for i, week in enumerate(solution):
-        response = "Week " + str(i + 1) + ": "
-        for candidate in week:
-            response += candidate + " "
-        print(response)
+        possible_solutions.append((solution, evaluate_solution(candidates, candidates_cost, solution)))
+
+        # Print out possible solution
+        print("One possible solution (of " + str(len(possible_solutions)) + ") found:")
+        print_solution(solution)
+        print("The cost of the solution: " + str(possible_solutions[-1][1]) + "\n")
+
+    # Sort solution by cost
+    possible_solutions = sorted(possible_solutions, key=lambda x: x[1])
+
+    print("Finished! These are the cheapest solutions (of " + str(len(possible_solutions)) + "):")
+    for i in range(0, 5):
+        solution, cost = possible_solutions[i]
+        print("Nr. " + str(i + 1) + " with cost of " + str(cost))
+        print_solution(solution)
+        print("-" * 10)
 
 
 def find_solution(candidates, not_available, solution, current_week, current_column, timeout):
@@ -54,9 +62,8 @@ def find_solution(candidates, not_available, solution, current_week, current_col
     :param current_week: the current week.
     :param current_column: the current column.
     :param timeout: the time on which the algorithm should cancel the operation (in seconds).
-    :return:
+    :return: solution
     """
-    global count
 
     # Check, if solution is even possible with the amount of candidates
     if len(candidates) < len(not_available):
@@ -78,8 +85,6 @@ def find_solution(candidates, not_available, solution, current_week, current_col
         # Ignore unavailable candidates
         if candidate in not_available[current_week]:
             continue
-
-        count += 1
 
         # Copy candidate-list and remove current candidate from it
         new_candidates = candidates[:]
@@ -103,6 +108,54 @@ def find_solution(candidates, not_available, solution, current_week, current_col
             return new_solution
 
     return None
+
+
+def evaluate_solution(candidates, candidates_cost, solution):
+    """
+    Inspects the given solution for optimality and returns its calculated cost.
+    :param candidates: the list of candidates
+    :param candidates_cost: a dictionary of additional cost per candidate
+    :param solution: the solution to evaluate
+    :return: the cost of the given solution
+    """
+    cost = 0
+    cand_appear = dict()
+
+    # Create helper data structure: Dictionary for with every candidate and its appearances in the weeks
+    for candidate in candidates:
+        cand_appear[candidate] = []
+
+    # For every appearance in schedule note it in cand_appear
+    for week, entry in enumerate(solution):
+        for candidate in entry:
+            cand_appear[candidate].append(week)
+
+    for candidate, appearance in cand_appear.items():
+        # Count the appearance of the same candidate multiple times within the schedule
+        if len(appearance) > 1:
+            cost += 2 ** len(appearance)
+
+            # Calculate distance between appearances (the smaller, the worse)
+            for i, a1 in enumerate(appearance):
+                for j, a2 in enumerate(appearance):
+                    if not i == j or not i > j:
+                        distance = a2 - a1
+                        if distance == 1:
+                            cost += 50
+
+            # Add extra cost per person
+            if candidate in candidates_cost:
+                cost += candidates_cost[candidate] * len(appearance)
+
+    return cost
+
+
+def print_solution(solution):
+    for i, week in enumerate(solution):
+        response = "Week " + str(i + 1) + ": "
+        for candidate in week:
+            response += candidate + " "
+        print(response)
 
 
 if __name__ == "__main__":
