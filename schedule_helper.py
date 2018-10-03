@@ -8,38 +8,28 @@ from time import *
 from random import shuffle
 
 
-def main():
+def start_calculation(candidates, candidates_cost, not_available, per_solution_timeout, global_timeout):
     global count
     start_time = time()
-    candidates = ["A.Picone", "P.Skorczyk", "R.Stöhr", "R.Ritschel", "G.Teixera", "F.Camuto", "M.Stöhr"]
-    candidates_cost = {'F.Camuto': 3, 'R.Ritschel': 2}
-    not_available = []
     possible_solutions = []
 
     # Copy candidates list, so it can be changed
     new_candidates = candidates[:]
 
     # Find a solution. If there are not enough candidates and search fails, use more candidates
-    while time() < start_time + 14000:
+    while time() < start_time + global_timeout:
         while True:
             shuffle(new_candidates)
 
-            solution = find_solution(new_candidates, not_available, [], 0, 0, time() + 600)
+            solution = find_solution(new_candidates, not_available, [], 0, 0, time() + per_solution_timeout)
 
             # If a solution is found, we are done. If not: Increase candidate count
             if solution is not None:
                 break
 
-            print("No solution found yet. Increasing candidates..")
-
             new_candidates = new_candidates[:] + candidates[:]
 
         possible_solutions.append((solution, evaluate_solution(candidates, candidates_cost, solution)))
-
-        # Print out possible solution
-        print("One possible solution (of " + str(len(possible_solutions)) + ") found:")
-        print_solution(solution)
-        print("The cost of the solution: " + str(possible_solutions[-1][1]) + "\n")
 
     # Sort solution by cost
     possible_solutions = sorted(possible_solutions, key=lambda x: x[1])
@@ -143,9 +133,9 @@ def evaluate_solution(candidates, candidates_cost, solution):
                         if distance == 1:
                             cost += 50
 
-            # Add extra cost per person
-            if candidate in candidates_cost:
-                cost += candidates_cost[candidate] * len(appearance)
+        # Add extra cost per person
+        if candidate in candidates_cost:
+            cost += candidates_cost[candidate] * len(appearance)
 
     return cost
 
@@ -159,4 +149,35 @@ def print_solution(solution):
 
 
 if __name__ == "__main__":
-    main()
+    candidates_string = input("Please name the candidates for scheduling (as a comma separated list without spaces): ")
+    candidates = list()
+    for candidate in candidates_string.split(','):
+        candidates.append(candidate)
+
+    candidates_cost_string = input("Are there candidates with additional costs? Please name them like A:Cost,B:Cost ")
+    candidates_cost = dict()
+    for tpl in candidates_cost_string.split(','):
+        candidate, cost = tpl.split(':')
+        candidates_cost[candidate] = int(cost)
+
+    weeks = int(input("How many weeks should be scheduled? "))
+
+    not_available = list()
+    for i in range(0, weeks):
+        na_string = input("For week " + str(i+1) + " name the candidates that are not available: ")
+
+        not_available.append(list())
+        for na in na_string.split(','):
+            not_available[i].append(na)
+
+    print("\n Now some more technical questions. As a starter it's recommended to just use the default values.")
+    per_solution_timeout = int(input("For how long should the program search for a specific solution until it " +
+                                     "times out? (Default: 30s) ") or 30)
+
+    global_timeout = int(input("For how long should the program try out different solutions until it shows you the " +
+                               "the best found? (Default: 60s) ") or 60)
+
+    print("Alright, we can start now. This may take a while (at least " + str(global_timeout) + "s), so please be" +
+          "patient.")
+
+    start_calculation(candidates, candidates_cost, not_available, per_solution_timeout, global_timeout)
