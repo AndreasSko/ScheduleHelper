@@ -6,10 +6,20 @@ Copyright, 2018: Andreas Skorczyk <me@andreas-sk.de>
 
 from time import *
 from random import shuffle
+import sys
 
 
 def start_calculation(candidates, candidates_cost, not_available, per_solution_timeout, global_timeout):
-    global count
+    """
+    Using the given values the function tries to find as many solutions as possible using the backtracking-algorithm.
+    :param candidates: list of all possible candidats.
+    :param candidates_cost: additional costs for some candidats as dictionary.
+    :param not_available: unavailable candidates, one list of candidates per week.
+    :param per_solution_timeout: the maximum time to search for one solution, after timeout try different
+           possible solution
+    :param global_timeout: the maximum time to search for solutions, after that the best five are returned
+    :return:
+    """
     start_time = time()
     possible_solutions = []
 
@@ -21,7 +31,8 @@ def start_calculation(candidates, candidates_cost, not_available, per_solution_t
         while True:
             shuffle(new_candidates)
 
-            solution = find_solution(new_candidates, not_available, [], 0, 0, time() + per_solution_timeout)
+            solution = find_solution(new_candidates, not_available, [[]] * len(not_available),
+                                     determine_next_week(None, not_available), 0, time() + per_solution_timeout)
 
             # If a solution is found, we are done. If not: Increase candidate count
             if solution is not None:
@@ -36,10 +47,11 @@ def start_calculation(candidates, candidates_cost, not_available, per_solution_t
 
     print("Finished! These are the cheapest solutions (of " + str(len(possible_solutions)) + "):")
     for i in range(0, 5):
-        solution, cost = possible_solutions[i]
-        print("Nr. " + str(i + 1) + " with cost of " + str(cost))
-        print_solution(solution)
-        print("-" * 10)
+        if not i >= len(possible_solutions):
+            solution, cost = possible_solutions[i]
+            print("Nr. " + str(i + 1) + " with cost of " + str(cost))
+            print_solution(solution)
+            print("-" * 10)
 
 
 def find_solution(candidates, not_available, solution, current_week, current_column, timeout):
@@ -63,11 +75,9 @@ def find_solution(candidates, not_available, solution, current_week, current_col
     if timeout - time() < 0:
         return None
 
-    # Initialize
-    weeks_count = len(not_available)
-
     # If solution was found, return solution
-    if current_week >= weeks_count and solution[current_week - 1][current_column] is not None:
+    if current_week == -1 \
+            and solution[determine_prev_week(current_week, not_available)][current_column] is not None:
         return solution
 
     # Try candidates, if no one available: backtrack
@@ -82,7 +92,7 @@ def find_solution(candidates, not_available, solution, current_week, current_col
 
         if current_column == 0:
             temp = solution[:]
-            temp.append([candidate, None])
+            temp[current_week] = ([candidate, None])
             new_solution = find_solution(new_candidates, not_available, temp, current_week, current_column + 1, timeout)
         else:
             # Ensure candidate is not in same column multiple times
@@ -92,7 +102,8 @@ def find_solution(candidates, not_available, solution, current_week, current_col
 
             temp = solution[:]
             temp[current_week][current_column] = candidate
-            new_solution = find_solution(new_candidates, not_available, temp, current_week + 1, 0, timeout)
+            new_solution = find_solution(new_candidates, not_available, temp,
+                                         determine_next_week(current_week, not_available), 0, timeout)
 
         if new_solution is not None:
             return new_solution
@@ -140,7 +151,79 @@ def evaluate_solution(candidates, candidates_cost, solution):
     return cost
 
 
+def determine_search_order(not_available):
+    """
+    Determines the optimal search order after the heuristic of "most constrained first" to detect possible
+    failures early on.
+    :param not_available: list of unavailable candidates, one list of candidates per week.
+    :return:
+    """
+
+    # For every week count the number of unavailable persons
+    not_available_count = list()
+    for i, unavailable in enumerate(not_available):
+        not_available_count.append((i, len(unavailable)))
+
+    not_available_count = sorted(not_available_count, key=lambda x: x[1], reverse=True)
+
+    result = []
+
+    for week in not_available_count:
+        result.append(week[0])
+
+    return result
+
+
+def determine_next_week(current_week, not_available):
+    """
+    Determines the next week to find a solution for using the optimal search-order.
+    :param current_week: the current week
+    :param not_available: list of unavailable candidates, one list of candidates per week
+    :return: next week
+    """
+    search_order = determine_search_order(not_available)
+
+    # Return first week in search_order
+    if current_week is None:
+        return search_order[0]
+
+    # If current_week == last week to search for, return -1 to signal this
+    if search_order.index(current_week) == (len(not_available) - 1):
+        return -1
+
+    return search_order[search_order.index(current_week) + 1]
+
+
+def determine_prev_week(current_week, not_available):
+    """
+    Determines the previous week using the optimal search-order.
+    :param current_week: the current week
+    :param not_available: list of unavailable candidates, one list of candidates per week
+    :return: previous week
+    """
+    search_order = determine_search_order(not_available)
+
+    # Return first week in search_order
+    if current_week is None:
+        return search_order[0]
+
+    # Return last week in search_order
+    if current_week == -1:
+        return search_order[-1]
+
+    # If current_week already first week in search_order, return -1 to signal this
+    if search_order[search_order.index(current_week) - 1] == search_order[-1]:
+        return -1
+
+    return search_order[search_order.index(current_week) - 1]
+
+
 def print_solution(solution):
+    """
+    For a given solution, print out a per week summary.
+    :param solution: the solution
+    :return: None
+    """
     for i, week in enumerate(solution):
         response = "Week " + str(i + 1) + ": "
         for candidate in week:
@@ -148,6 +231,18 @@ def print_solution(solution):
         print(response)
 
 
+# For debug-purposes
+if len(sys.argv) >= 2:
+    if sys.argv[1] == 'debug':
+        print("DEBUG")
+        candidates = ["A", "B", "C", "D", "E", "F", "G"]
+        not_available = [[], ["C"], [], ["F", "B"], []]
+
+        start_calculation(candidates, {}, not_available, 10, 60)
+
+    exit()
+
+# Command-line usage
 if __name__ == "__main__":
     candidates_string = input("Please name the candidates for scheduling (as a comma separated list without spaces): ")
     candidates = list()
