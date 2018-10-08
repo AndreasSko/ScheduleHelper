@@ -45,12 +45,14 @@ class ScheduleHelper:
 
         self.solutions = list()
 
-    def start_calculation(self) -> None:
+    def start_calculation(self) -> bool:
         """
-        Using the given values the function tries to find as many solutions as possible using the backtracking-algorithm.
-        :return: None
+        Using the given values the function tries to find as many solutions as possible using the
+        backtracking-algorithm.
+        :return: True, if solutions were found, False otherwise
         """
         start_time = time()
+        min_cost = sys.maxsize
 
         # Copy candidates list, so it can be changed
         new_candidates = self.candidates[:]
@@ -70,18 +72,16 @@ class ScheduleHelper:
 
                 new_candidates = new_candidates[:] + self.candidates[:]
 
-            self.solutions.append((solution, self.evaluate_solution(solution)))
+            # Only add solution to list, if its cost is better or equal to previous solutions
+            cost = self.evaluate_solution(solution)
+            if cost <= min_cost:
+                self.solutions.append((solution, cost))
+                min_cost = cost
 
         # Sort solution by cost
         self.solutions = sorted(self.solutions, key=lambda x: x[1])
 
-        print("Finished! These are the cheapest solutions (of " + str(len(self.solutions)) + "):")
-        for i in range(0, 5):
-            if not i >= len(self.solutions):
-                solution, cost = self.solutions[i]
-                print("Nr. " + str(i + 1) + " with cost of " + str(cost))
-                self.print_solution(solution)
-                print("-" * 10)
+        return len(self.solutions) > 0
 
     def find_solution(self, candidates: list, solution: list, current_week: int,
                       current_column: int, timeout: int) -> list or None:
@@ -172,7 +172,7 @@ class ScheduleHelper:
 
             # Add extra cost per person
             if candidate in self.candidates_cost:
-                cost += candidates_cost[candidate] * len(appearance)
+                cost += self.candidates_cost[candidate] * len(appearance)
 
         return cost
 
@@ -208,7 +208,7 @@ class ScheduleHelper:
             return self._search_order[0]
 
         # If current_week == last week to search for, return -1 to signal this
-        if self._search_order.index(current_week) == (len(not_available) - 1):
+        if self._search_order.index(current_week) == (len(self.not_available) - 1):
             return -1
 
         return self._search_order[self._search_order.index(current_week) + 1]
@@ -246,16 +246,27 @@ class ScheduleHelper:
             print(response)
 
 
+def calculation_finised(s_helper: ScheduleHelper):
+    print("Finished! These are the cheapest solutions (of " + str(len(s_helper.solutions)) + "):")
+    for i in range(0, 5):
+        if not i >= len(s_helper.solutions):
+            solution, cost = s_helper.solutions[i]
+            print("Nr. " + str(i + 1) + " with cost of " + str(cost))
+            s_helper.print_solution(solution)
+            print("-" * 10)
+
+
 # For debug-purposes
 if len(sys.argv) >= 2:
     if sys.argv[1] == 'debug':
         print("DEBUG")
         candidates = ["A", "B", "C", "D", "E", "F", "G"]
-        not_available = [[], ["G"], [], ["F", "B"], []]
+        not_available = [["A"],[],[],["C"],["F","B"],["D"],["G"],[],["C"]]
 
-        s_helper = ScheduleHelper(candidates, {}, not_available, 10, 30)
+        s_helper = ScheduleHelper(candidates, {}, not_available, 30, 300)
 
-        s_helper.start_calculation()
+        if s_helper.start_calculation():
+            calculation_finised(s_helper)
 
     exit()
 
@@ -294,4 +305,5 @@ if __name__ == "__main__":
 
     s_helper = ScheduleHelper(candidates, candidates_cost, not_available, per_solution_timeout, global_timeout)
 
-    s_helper.start_calculation()
+    if s_helper.start_calculation():
+        calculation_finised(s_helper)
