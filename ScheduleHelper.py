@@ -16,15 +16,17 @@ class ScheduleHelper:
     candidates: list
     candidates_cost: dict
     not_available: list
+    columns: int
     per_solution_timeout: int
     global_timeout: int
 
+    _min_cost: int
     _search_order: list
 
     solutions: list
 
-    def __init__(self, candidates: list, candidates_cost: dict, not_available: list, per_solution_timeout: int,
-                 global_timeout: int):
+    def __init__(self, candidates: list, candidates_cost: dict, not_available: list, columns=2,
+                 per_solution_timeout=7, global_timeout=30):
         """
 
         :param candidates: list of all possible candidats.
@@ -37,10 +39,12 @@ class ScheduleHelper:
         self.candidates = candidates
         self.candidates_cost = candidates_cost
         self.not_available = not_available
+        self.columns = columns
         self.per_solution_timeout = per_solution_timeout
         self.global_timeout = global_timeout
 
         # Create helper-structures
+        self._min_cost = sys.maxsize
         self._search_order = self.determine_search_order()
 
         self.solutions = list()
@@ -52,17 +56,17 @@ class ScheduleHelper:
         :return: True, if solutions were found, False otherwise
         """
         start_time = time()
-        min_cost = sys.maxsize
 
         # Copy candidates list, so it can be changed
         new_candidates = self.candidates[:]
+        solution_template = [[None] * self.columns] * len(self.not_available)
 
         # Find a solution. If there are not enough candidates and search fails, use more candidates
         while time() < start_time + self.global_timeout:
             while True:
                 shuffle(new_candidates)
 
-                solution = self.find_solution(new_candidates, [[]] * len(self.not_available),
+                solution = self.find_solution(new_candidates, solution_template[:],
                                               self.determine_next_week(None), 0,
                                               int(time()) + self.per_solution_timeout)
 
@@ -74,9 +78,9 @@ class ScheduleHelper:
 
             # Only add solution to list, if its cost is better or equal to previous solutions
             cost = self.evaluate_solution(solution)
-            if cost <= min_cost:
+            if cost <= self._min_cost:
                 self.solutions.append((solution, cost))
-                min_cost = cost
+                self._min_cost = cost
 
         # Sort solution by cost
         self.solutions = sorted(self.solutions, key=lambda x: x[1])
@@ -95,7 +99,6 @@ class ScheduleHelper:
         :param timeout: the time on which the algorithm should cancel the operation (in seconds).
         :return: solution
         """
-
         # Check, if solution is even possible with the amount of candidates
         if len(candidates) < len(self.not_available):
             return None
@@ -115,22 +118,22 @@ class ScheduleHelper:
             if candidate in self.not_available[current_week]:
                 continue
 
+            # Ensure candidate is not in same column multiple times
+            if candidate in solution[current_week]:
+                continue
+
             # Copy candidate-list and remove current candidate from it
             new_candidates = candidates[:]
             del new_candidates[index]
 
-            if current_column == 0:
-                temp = solution[:]
-                temp[current_week] = ([candidate, None])
+            temp = solution[:]
+            temp2 = solution[current_week][:]
+            temp2[current_column] = candidate
+            temp[current_week] = temp2
+
+            if current_column < (self.columns - 1):
                 new_solution = self.find_solution(new_candidates, temp, current_week, current_column + 1, timeout)
             else:
-                # Ensure candidate is not in same column multiple times
-                # TODO: Enable more than just 2 columns
-                if candidate == solution[current_week][current_column - 1]:
-                    continue
-
-                temp = solution[:]
-                temp[current_week][current_column] = candidate
                 new_solution = self.find_solution(new_candidates, temp,
                                                   self.determine_next_week(current_week), 0, timeout)
 
@@ -145,6 +148,9 @@ class ScheduleHelper:
         :param solution: the solution to evaluate
         :return: the cost of the given solution
         """
+        if solution is None:
+            return 0
+
         cost = 0
         cand_appear = dict()
 
@@ -155,9 +161,13 @@ class ScheduleHelper:
         # For every appearance in schedule note it in cand_appear
         for week, entry in enumerate(solution):
             for candidate in entry:
+                if candidate is None:
+                    continue
                 cand_appear[candidate].append(week)
 
         for candidate, appearance in cand_appear.items():
+            if candidate is None:
+                continue
             # Count the appearance of the same candidate multiple times within the schedule
             if len(appearance) > 1:
                 cost += 2 ** len(appearance)
@@ -261,9 +271,9 @@ if len(sys.argv) >= 2:
     if sys.argv[1] == 'debug':
         print("DEBUG")
         candidates = ["A", "B", "C", "D", "E", "F", "G"]
-        not_available = [["A"],[],[],["C"],["F","B"],["D"],["G"],[],["C"]]
+        not_available = [[], ["C"], [], ["F", "B"], [], [], ["C"], [], ["F", "B"], [], [], ["C"], [], ["F", "B"], []]
 
-        s_helper = ScheduleHelper(candidates, {}, not_available, 30, 300)
+        s_helper = ScheduleHelper(candidates, {}, not_available, 4, 10, 120)
 
         if s_helper.start_calculation():
             calculation_finised(s_helper)
@@ -287,11 +297,13 @@ if __name__ == "__main__":
 
     not_available = list()
     for i in range(0, weeks):
-        na_string = input("For week " + str(i+1) + " name the candidates that are not available: ")
+        na_string = input("For week " + str(i + 1) + " name the candidates that are not available: ")
 
         not_available.append(list())
         for na in na_string.split(','):
             not_available[i].append(na)
+
+    columns = int(input("How many columns per week should be scheduled?"))
 
     print("\n Now some more technical questions. As a starter it's recommended to just use the default values.")
     per_solution_timeout = int(input("For how long should the program search for a specific solution until it " +
@@ -300,10 +312,10 @@ if __name__ == "__main__":
     global_timeout = int(input("For how long should the program try out different solutions until it shows you the " +
                                "the best found? (Default: 60s) ") or 60)
 
-    print("Alright, we can start now. This may take a while (at least " + str(global_timeout) + "s), so please be" +
+    print("Alright, we can start now. This may take a while (at least " + str(global_timeout) + "s), so please be " +
           "patient.")
 
-    s_helper = ScheduleHelper(candidates, candidates_cost, not_available, per_solution_timeout, global_timeout)
+    s_helper = ScheduleHelper(candidates, candidates_cost, not_available, columns, per_solution_timeout, global_timeout)
 
     if s_helper.start_calculation():
         calculation_finised(s_helper)
